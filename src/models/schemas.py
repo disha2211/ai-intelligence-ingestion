@@ -59,6 +59,7 @@ class ResearchPaperEntity(BaseModel):
     schemaVersion: str = "1.0"
     recordType: str = "RESEARCH_PAPER"
     content: ResearchPaperContent
+    collectedAt: datetime
 
 class JobContent(BaseModel):
     company: str
@@ -114,3 +115,9 @@ class CleanDocument(BaseModel):
     published_at: datetime | None = None
 
     content_hash: str
+
+class EnrichmentEvidence(BaseModel):
+    field: str
+    source_url: HttpUrl
+    method: str
+    confidence: float | None = None
