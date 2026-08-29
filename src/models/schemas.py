@@ -53,6 +53,9 @@ class ResearchPaperContent(BaseModel):
     github_url: HttpUrl | None = None
     github_stars: int | None = None
     published_date: datetime
+    summary: str | None = None
+    topics: list[str] = Field(default_factory=list)
+    application_area: str | None = None
 
 
 class ResearchPaperEntity(BaseModel):
