@@ -121,3 +121,9 @@ class EnrichmentEvidence(BaseModel):
     source_url: HttpUrl
     method: str
     confidence: float | None = None
+
+class PaperEnrichment(BaseModel):
+    summary: str
+    topics: list[str]
+    application_area: str | None = None
+    github_url: HttpUrl | None = None
