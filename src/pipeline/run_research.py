@@ -68,7 +68,42 @@ async def main():
         batch_size=10,
     )
 
-    papers = await pipeline.run()
+    papers, stats = await pipeline.run()
+
+    print("\nPipeline Statistics")
+    print("-" * 40)
+
+    print(
+        f"Fetched:       {stats.fetched}"
+    )
+
+    print(
+        f"Normalized:    {stats.normalized}"
+    )
+
+    print(
+        f"Enriched:      {stats.enriched}"
+    )
+
+    print(
+        f"Validated:     {stats.validated}"
+    )
+
+    print(
+        f"Failed:        {stats.failed}"
+    )
+
+    print(
+        f"Success rate:  {stats.success_rate:.2f}%"
+    )
+
+    print(
+        f"Duration:      {stats.duration_seconds:.2f}s"
+    )
+
+    print(
+        f"Throughput:    {stats.records_per_second:.2f} records/s"
+    )
 
     print(
         f"\nProcessed {len(papers)} papers\n"
