@@ -99,3 +99,18 @@ class RawDocument(BaseModel):
     extracted_text: str | None = None
 
     content_hash: str
+
+class CleanDocument(BaseModel):
+    source_name: str
+    source_url: HttpUrl
+
+    fetched_at: datetime
+
+    title: str | None = None
+    description: str | None = None
+
+    text: str
+
+    published_at: datetime | None = None
+
+    content_hash: str
