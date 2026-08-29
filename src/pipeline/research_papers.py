@@ -13,6 +13,9 @@ from src.models.schemas import (
 from src.parsers.research_papers import (
     ResearchPaperNormalizer,
 )
+from src.validation.research_paper import (
+    ResearchPaperValidator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +102,8 @@ class ResearchPaperPipeline:
                     paper.content.github_url = (
                         enriched.github_url
                     )
+
+                paper = self.validator.validate(paper)
 
                 results.append(paper)
 
