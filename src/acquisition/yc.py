@@ -10,10 +10,10 @@ from src.acquisition.models import RawRecord
 
 class YCStartupSource(AcquisitionSource):
     """
-    Acquisition source for publicly listed Y Combinator companies.
+    Acquires publicly listed Y Combinator companies.
 
-    The upstream dataset is a public JSON representation of
-    YC's company directory.
+    The upstream dataset is a public JSON representation
+    of YC's company directory.
     """
 
     name = "y_combinator"
@@ -31,8 +31,16 @@ class YCStartupSource(AcquisitionSource):
         cursor: str | None = None,
     ) -> AsyncIterator[RawRecord]:
 
+        collected_at = datetime.now(
+            timezone.utc
+        )
+
+        start = int(cursor or 0)
+
         timeout = aiohttp.ClientTimeout(
-            total=60
+            total=180,
+            connect=30,
+            sock_read=180,
         )
 
         headers = {
@@ -40,10 +48,6 @@ class YCStartupSource(AcquisitionSource):
                 "AI-Intelligence-Pipeline/1.0"
             )
         }
-
-        collected_at = datetime.now(
-            timezone.utc
-        )
 
         async with aiohttp.ClientSession(
             timeout=timeout,
@@ -60,7 +64,8 @@ class YCStartupSource(AcquisitionSource):
                     await response.json()
                 )
 
-        start = int(cursor or 0)
+        if not data:
+            return
 
         if limit is None:
             end = len(data)
@@ -72,23 +77,38 @@ class YCStartupSource(AcquisitionSource):
 
         for company in data[start:end]:
 
-            name = self._get_name(company)
+            name = self._get_name(
+                company
+            )
 
             website = self._get_website(
                 company
             )
 
-            if not name or not website:
+            if not name:
+                continue
+
+            # Some YC companies may not have a
+            # usable website. We still need a
+            # legitimate source URL.
+            source_url = (
+                website
+                or self._get_company_url(
+                    company
+                )
+            )
+
+            if not source_url:
                 continue
 
             yield RawRecord(
-                        source_name=self.name,
-                        source_url=self.URL,
-                        canonical_url=website,
-                        entity_type=self.entity_type,
-                        payload=company,
-                        collected_at=collected_at,
-                    )
+                source_name=self.name,
+                source_url=source_url,
+                canonical_url=source_url,
+                entity_type=self.entity_type,
+                payload=company,
+                collected_at=collected_at,
+            )
 
     @staticmethod
     def _get_name(
@@ -103,6 +123,7 @@ class YCStartupSource(AcquisitionSource):
             value = company.get(key)
 
             if isinstance(value, str):
+
                 value = value.strip()
 
                 if value:
@@ -123,12 +144,37 @@ class YCStartupSource(AcquisitionSource):
             value = company.get(key)
 
             if isinstance(value, str):
+
                 value = value.strip()
 
-                if value.startswith(
-                    "http://"
-                ) or value.startswith(
-                    "https://"
+                if (
+                    value.startswith("http://")
+                    or value.startswith("https://")
+                ):
+                    return value
+
+        return ""
+
+    @staticmethod
+    def _get_company_url(
+        company: dict[str, Any],
+    ) -> str:
+
+        for key in (
+            "company_url",
+            "yc_url",
+            "profile_url",
+        ):
+
+            value = company.get(key)
+
+            if isinstance(value, str):
+
+                value = value.strip()
+
+                if (
+                    value.startswith("http://")
+                    or value.startswith("https://")
                 ):
                     return value
 

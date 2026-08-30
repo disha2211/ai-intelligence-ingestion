@@ -1,12 +1,29 @@
 from typing import Any
-
+from urllib.parse import urlparse
 from src.acquisition.models import RawRecord
 from src.models.canonical import Startup
+from src.normalization.utils import (
+    normalize_url,
+)
+
+
+def optional_string(value: Any) -> str | None:
+    """
+    Convert missing/blank values to None.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        value = value.strip()
+        return value if value else None
+
+    return str(value).strip() or None
 
 
 def normalize_startup(
     record: RawRecord,
-) -> Startup:
+) -> Startup | None:
 
     data: dict[str, Any] = record.payload
 
@@ -16,17 +33,27 @@ def normalize_startup(
         or ""
     ).strip()
 
+    if not name:
+        return None
+
     description = (
         data.get("description")
         or data.get("long_description")
         or ""
     ).strip()
 
-    url = (
+    url = normalize_url(
         data.get("website")
         or data.get("url")
-        or record.source_url
+        or ""
     )
+
+    if url is None:
+        print(
+            f"Skipping startup without "
+            f"valid URL: {name}"
+        )
+        return None
 
     founders = data.get("founders") or []
 
@@ -51,6 +78,10 @@ def normalize_startup(
         except (TypeError, ValueError):
             founded_year = None
 
+    linkedin_url = normalize_url(
+        data.get("linkedin_url")
+    )
+
     return Startup(
         name=name,
         description=description,
@@ -70,7 +101,25 @@ def normalize_startup(
             or data.get("stage")
         ),
         founders=founders,
-        linkedin_url=data.get(
-            "linkedin_url"
-        ),
+        linkedin_url=linkedin_url,
     )
+
+
+def is_valid_url(
+    value: str,
+) -> bool:
+
+    try:
+        parsed = urlparse(value)
+
+        return (
+            parsed.scheme in {
+                "http",
+                "https",
+            }
+            and bool(parsed.netloc)
+        )
+
+    except ValueError:
+        return False
+

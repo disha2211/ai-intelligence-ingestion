@@ -76,6 +76,7 @@ def normalize_paper(
         ),
         github_url=data.get(
             "github_url"
+            or None
         ),
         github_stars=data.get(
             "github_stars"

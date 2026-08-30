@@ -1,5 +1,8 @@
+# src/llm/chunking.py
+
 def chunk_text(
     text: str,
+    *,
     max_chars: int = 12000,
     overlap: int = 500,
 ) -> list[str]:
@@ -7,22 +10,31 @@ def chunk_text(
     if not text:
         return []
 
-    chunks = []
+    if len(text) <= max_chars:
+        return [text]
+
+    if overlap >= max_chars:
+        raise ValueError(
+            "overlap must be smaller than max_chars"
+        )
+
+    chunks: list[str] = []
 
     start = 0
+    text_length = len(text)
 
-    while start < len(text):
+    while start < text_length:
 
         end = min(
             start + max_chars,
-            len(text),
+            text_length,
         )
 
-        chunk = text[start:end]
+        chunks.append(
+            text[start:end]
+        )
 
-        chunks.append(chunk)
-
-        if end >= len(text):
+        if end >= text_length:
             break
 
         start = end - overlap

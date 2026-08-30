@@ -146,8 +146,8 @@ class FuturepediaSource(AcquisitionSource):
 
                         yield RawRecord(
                                 source_name=self.name,
-                                source_url=url,
-                                canonical_url=product["url"],
+                                source_url=product_url,
+                                canonical_url=product_url,
                                 entity_type=self.entity_type,
                                 payload=product,
                                 collected_at=collected_at,

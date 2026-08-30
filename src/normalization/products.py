@@ -2,7 +2,9 @@ from typing import Any
 
 from src.acquisition.models import RawRecord
 from src.models.canonical import Product
-
+from src.normalization.utils import (
+    normalize_url,
+)
 
 def normalize_product(
     record: RawRecord,
@@ -21,12 +23,16 @@ def normalize_product(
         or ""
     ).strip()
 
-    url = (
+    url = normalize_url(
         data.get("url")
         or data.get("website")
         or record.source_url
     )
 
+    if url is None:
+        raise ValueError(
+            f"Product has no valid URL: {name}"
+        )
     features = (
         data.get("features_use_cases")
         or data.get("features")
@@ -63,5 +69,6 @@ def normalize_product(
         ),
         github_url=data.get(
             "github_url"
+            or None
         ),
     )

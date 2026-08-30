@@ -1,17 +1,12 @@
-import asyncio
-import logging
+# src/llm/orchestrator.py
 
-from src.llm.models import (
-    LLMRequest,
-    LLMResponse,
-)
-from src.llm.providers import (
-    BaseLLMProvider,
-)
-from src.llm.retry import (
-    backoff_delay,
-    is_retryable,
-)
+import logging
+from typing import Any
+
+from src.llm.base import LLMProvider
+from src.llm.chunking import chunk_text
+from src.llm.retry import retry_with_backoff
+from src.llm.schemas import EnrichmentResult
 
 
 logger = logging.getLogger(__name__)
@@ -21,96 +16,193 @@ class LLMOrchestrator:
 
     def __init__(
         self,
-        providers: list[BaseLLMProvider],
-        retries_per_provider: int = 2,
-    ):
+        providers: list[LLMProvider],
+    ) -> None:
+
+        if not providers:
+            raise ValueError(
+                "At least one LLM provider is required"
+            )
+
         self.providers = providers
-        self.retries_per_provider = (
-            retries_per_provider
+
+    async def enrich(
+        self,
+        *,
+        text: str,
+    ) -> EnrichmentResult:
+
+        chunks = chunk_text(text)
+
+        if not chunks:
+            return EnrichmentResult()
+
+        if len(chunks) == 1:
+
+            return await self._generate(
+                chunks[0]
+            )
+
+        return await self._chunk_and_reduce(
+            chunks
         )
 
-    async def generate(
+    async def _generate(
         self,
-        request: LLMRequest,
-    ) -> LLMResponse:
+        text: str,
+    ) -> EnrichmentResult:
 
         last_error: Exception | None = None
 
         for provider in self.providers:
 
-            logger.info(
-                "Trying LLM provider | provider=%s",
-                provider.name,
-            )
+            try:
 
-            for attempt in range(
-                self.retries_per_provider + 1
-            ):
+                logger.info(
+                    "Trying LLM provider=%s",
+                    provider.name,
+                )
 
-                try:
-
-                    response = (
-                        await provider.generate(
-                            request
+                async def operation():
+                    return await provider.generate(
+                        prompt=self._build_prompt(
+                            text
                         )
                     )
 
-                    logger.info(
-                        "LLM success | "
-                        "provider=%s | "
-                        "attempt=%s",
-                        provider.name,
-                        attempt + 1,
-                    )
+                raw_response = await retry_with_backoff(
+                    operation
+                )
 
-                    return response
+                return EnrichmentResult.model_validate_json(
+                    raw_response
+                )
 
-                except Exception as exc:
+            except Exception as exc:
 
-                    last_error = exc
+                last_error = exc
 
-                    if not is_retryable(exc):
+                logger.warning(
+                    "Provider failed | provider=%s | error=%s",
+                    provider.name,
+                    exc,
+                )
 
-                        logger.warning(
-                            "Non-retryable LLM "
-                            "error | provider=%s "
-                            "| error=%s",
-                            provider.name,
-                            exc,
-                        )
-
-                        break
-
-                    if (
-                        attempt
-                        >= self.retries_per_provider
-                    ):
-                        logger.warning(
-                            "Provider exhausted | "
-                            "provider=%s",
-                            provider.name,
-                        )
-
-                        break
-
-                    delay = backoff_delay(
-                        attempt
-                    )
-
-                    logger.warning(
-                        "LLM retry | "
-                        "provider=%s | "
-                        "attempt=%s | "
-                        "delay=%.2f",
-                        provider.name,
-                        attempt + 1,
-                        delay,
-                    )
-
-                    await asyncio.sleep(
-                        delay
-                    )
+                continue
 
         raise RuntimeError(
             "All LLM providers failed"
         ) from last_error
+
+    async def _chunk_and_reduce(
+        self,
+        chunks: list[str],
+    ) -> EnrichmentResult:
+
+        partial_results: list[
+            EnrichmentResult
+        ] = []
+
+        for index, chunk in enumerate(
+            chunks
+        ):
+
+            logger.info(
+                "Processing chunk %d/%d",
+                index + 1,
+                len(chunks),
+            )
+
+            result = await self._generate(
+                chunk
+            )
+
+            partial_results.append(result)
+
+        return await self._reduce(
+            partial_results
+        )
+
+    async def _reduce(
+        self,
+        results: list[EnrichmentResult],
+    ) -> EnrichmentResult:
+
+        summaries = [
+            result.summary
+            for result in results
+            if result.summary
+        ]
+
+        categories = [
+            result.category
+            for result in results
+            if result.category
+        ]
+
+        tags = sorted(
+            {
+                tag
+                for result in results
+                for tag in result.tags
+            }
+        )
+
+        use_cases = sorted(
+            {
+                use_case
+                for result in results
+                for use_case in result.use_cases
+            }
+        )
+
+        application_areas = [
+            result.application_area
+            for result in results
+            if result.application_area
+        ]
+
+        return EnrichmentResult(
+            summary=" ".join(summaries),
+            category=(
+                categories[0]
+                if categories
+                else None
+            ),
+            tags=tags,
+            use_cases=use_cases,
+            application_area=(
+                application_areas[0]
+                if application_areas
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _build_prompt(
+        text: str,
+    ) -> str:
+
+        return f"""
+You are an information extraction system.
+
+Extract structured metadata from the
+following source content.
+
+Return ONLY valid JSON matching:
+
+{{
+  "summary": "string",
+  "category": "string or null",
+  "tags": ["string"],
+  "use_cases": ["string"],
+  "application_area": "string or null"
+}}
+
+Do not invent information.
+If a field is not supported by the source,
+use null or an empty list.
+
+SOURCE:
+{text}
+"""

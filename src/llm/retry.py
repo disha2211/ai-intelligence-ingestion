@@ -1,5 +1,12 @@
+# src/llm/retry.py
+
 import asyncio
 import random
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
+
+
+T = TypeVar("T")
 
 
 RETRYABLE_STATUS_CODES = {
@@ -11,49 +18,48 @@ RETRYABLE_STATUS_CODES = {
 }
 
 
-def get_status_code(
-    exc: Exception,
-) -> int | None:
+class RetryableLLMError(Exception):
 
-    return getattr(
-        exc,
-        "status_code",
-        None,
-    )
-
-
-def is_retryable(
-    exc: Exception,
-) -> bool:
-
-    if isinstance(
-        exc,
-        asyncio.TimeoutError,
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
     ):
-        return True
-
-    status_code = get_status_code(exc)
-
-    return (
-        status_code
-        in RETRYABLE_STATUS_CODES
-    )
+        super().__init__(message)
+        self.status_code = status_code
 
 
-def backoff_delay(
-    attempt: int,
-    base: float = 1.0,
-    maximum: float = 30.0,
-) -> float:
+async def retry_with_backoff(
+    operation: Callable[[], Awaitable[T]],
+    *,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+) -> T:
 
-    exponential = min(
-        maximum,
-        base * (2 ** attempt),
-    )
+    attempt = 0
 
-    jitter = random.uniform(
-        0,
-        exponential * 0.25,
-    )
+    while True:
 
-    return exponential + jitter
+        try:
+            return await operation()
+
+        except RetryableLLMError:
+
+            if attempt >= max_retries:
+                raise
+
+            delay = min(
+                max_delay,
+                base_delay * (2 ** attempt),
+            )
+
+            # Jitter prevents synchronized retries.
+            delay += random.uniform(
+                0,
+                delay * 0.25,
+            )
+
+            await asyncio.sleep(delay)
+
+            attempt += 1
