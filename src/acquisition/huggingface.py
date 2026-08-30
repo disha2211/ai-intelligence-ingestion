@@ -101,12 +101,13 @@ class HuggingFaceSource(AcquisitionSource):
                     )
 
                     yield RawRecord(
-                        source_name=self.name,
-                        source_url=source_url,
-                        entity_type=self.entity_type,
-                        payload=item,
-                        collected_at=collected_at,
-                    )
+                                source_name=self.name,
+                                source_url=url,
+                                canonical_url=source_url,
+                                entity_type=self.entity_type,
+                                payload=item,
+                                collected_at=collected_at,
+                            )
 
                     if remaining is not None:
 

@@ -82,12 +82,13 @@ class YCStartupSource(AcquisitionSource):
                 continue
 
             yield RawRecord(
-                source_name=self.name,
-                source_url=website,
-                entity_type=self.entity_type,
-                payload=company,
-                collected_at=collected_at,
-            )
+                        source_name=self.name,
+                        source_url=self.URL,
+                        canonical_url=website,
+                        entity_type=self.entity_type,
+                        payload=company,
+                        collected_at=collected_at,
+                    )
 
     @staticmethod
     def _get_name(

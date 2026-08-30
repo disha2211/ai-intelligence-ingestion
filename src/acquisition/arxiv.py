@@ -175,12 +175,13 @@ class ArxivSource(AcquisitionSource):
 
             records.append(
                 RawRecord(
-                    source_name=self.name,
-                    source_url=paper_url,
-                    entity_type=self.entity_type,
-                    payload=payload,
-                    collected_at=collected_at,
-                )
+                source_name=self.name,
+                source_url=self.API_URL,
+                canonical_url=paper_url,
+                entity_type=self.entity_type,
+                payload=payload,
+                collected_at=collected_at,
+            )
             )
 
         return records

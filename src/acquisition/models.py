@@ -16,6 +16,7 @@ class RawRecord:
 
     source_name: str
     source_url: str
+    canonical_url: str | None
     entity_type: str
     payload: dict[str, Any]
     collected_at: datetime
