@@ -19,6 +19,10 @@ from src.validation.research_paper import (
 from src.pipeline.stats import PipelineStats
 from src.pipeline.workers import bounded_map
 
+from src.db.repository import EntityRepository
+from src.db.unit_of_work import DatabaseSession
+from src.db.mappers import research_paper_to_entity
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +104,20 @@ class ResearchPaperPipeline:
             for paper in processed
             if paper is not None
         ]
+
+        async with DatabaseSession() as session:
+
+            repository = EntityRepository(session)
+
+            for paper in results:
+
+                data = research_paper_to_entity(
+                    paper
+                )
+
+                await repository.upsert(
+                    **data
+                )
 
         stats.enriched = len(results)
         stats.validated = len(results)
