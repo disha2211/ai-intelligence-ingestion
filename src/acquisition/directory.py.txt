@@ -1,0 +1,213 @@
+from collections.abc import AsyncIterator
+from datetime import datetime, timezone
+from typing import Any
+
+import aiohttp
+from bs4 import BeautifulSoup
+
+from src.acquisition.base import AcquisitionSource
+from src.acquisition.models import RawRecord
+
+
+class DirectorySource(AcquisitionSource):
+    """
+    Generic paginated HTML directory source.
+
+    The source-specific selectors and pagination URL builder
+    are injected so the acquisition engine stays reusable.
+    """
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        entity_type: str,
+        start_url: str,
+        item_selector: str,
+        name_selector: str,
+        url_selector: str,
+        description_selector: str | None = None,
+        next_page_builder=None,
+    ) -> None:
+
+        self.name = name
+        self.entity_type = entity_type
+        self.start_url = start_url
+
+        self.item_selector = item_selector
+        self.name_selector = name_selector
+        self.url_selector = url_selector
+        self.description_selector = (
+            description_selector
+        )
+        self.next_page_builder = (
+            next_page_builder
+        )
+
+    async def fetch(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AsyncIterator[RawRecord]:
+
+        collected_at = datetime.now(
+            timezone.utc
+        )
+
+        page = int(cursor or 1)
+        collected = 0
+
+        timeout = aiohttp.ClientTimeout(
+            total=30
+        )
+
+        headers = {
+            "User-Agent": (
+                "AI-Intelligence-Pipeline/1.0"
+            )
+        }
+
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            headers=headers,
+        ) as session:
+
+            while True:
+
+                url = self._build_url(page)
+
+                async with session.get(
+                    url
+                ) as response:
+
+                    response.raise_for_status()
+
+                    html = await response.text()
+
+                soup = BeautifulSoup(
+                    html,
+                    "html.parser",
+                )
+
+                items = soup.select(
+                    self.item_selector
+                )
+
+                if not items:
+                    break
+
+                for item in items:
+
+                    name_element = item.select_one(
+                        self.name_selector
+                    )
+
+                    url_element = item.select_one(
+                        self.url_selector
+                    )
+
+                    if (
+                        name_element is None
+                        or url_element is None
+                    ):
+                        continue
+
+                    name = (
+                        name_element.get_text(
+                            " ",
+                            strip=True,
+                        )
+                    )
+
+                    source_url = (
+                        url_element.get(
+                            "href"
+                        )
+                    )
+
+                    if not source_url:
+                        continue
+
+                    if source_url.startswith(
+                        "/"
+                    ):
+                        source_url = (
+                            self._absolute_url(
+                                source_url
+                            )
+                        )
+
+                    description = ""
+
+                    if self.description_selector:
+
+                        description_element = (
+                            item.select_one(
+                                self.description_selector
+                            )
+                        )
+
+                        if (
+                            description_element
+                            is not None
+                        ):
+                            description = (
+                                description_element
+                                .get_text(
+                                    " ",
+                                    strip=True,
+                                )
+                            )
+
+                    payload: dict[str, Any] = {
+                        "name": name,
+                        "description": description,
+                        "url": source_url,
+                    }
+
+                    yield RawRecord(
+                        source_name=self.name,
+                        source_url=source_url,
+                        entity_type=self.entity_type,
+                        payload=payload,
+                        collected_at=collected_at,
+                    )
+
+                    collected += 1
+
+                    if (
+                        limit is not None
+                        and collected >= limit
+                    ):
+                        return
+
+                page += 1
+
+                if self.next_page_builder is None:
+                    break
+
+    def _build_url(
+        self,
+        page: int,
+    ) -> str:
+
+        if self.next_page_builder:
+            return self.next_page_builder(
+                self.start_url,
+                page,
+            )
+
+        return self.start_url
+
+    def _absolute_url(
+        self,
+        path: str,
+    ) -> str:
+
+        from urllib.parse import urljoin
+
+        return urljoin(
+            self.start_url,
+            path,
+        )
